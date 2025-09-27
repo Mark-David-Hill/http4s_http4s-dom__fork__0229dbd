@@ -138,10 +138,40 @@ object WebSocketClient {
             .map(_.merge)
 
         override def sendText(text: String): F[Unit] =
-          F.delay(ws.send(text))
+          F.defer {
+            ws.readyState match {
+              case WebSocket.CONNECTING =>
+                F.raiseError(new WebSocketException("WebSocket is still connecting"))
+              case WebSocket.OPEN =>
+                F.delay(ws.send(text)).handleErrorWith { e =>
+                  F.raiseError(new WebSocketException(s"Failed to send text message: ${e.getMessage}"))
+                }
+              case WebSocket.CLOSING =>
+                F.raiseError(new WebSocketException("WebSocket is closing"))
+              case WebSocket.CLOSED =>
+                F.raiseError(new WebSocketException("WebSocket is already closed"))
+              case _ =>
+                F.raiseError(new WebSocketException("WebSocket is in an unknown state"))
+            }
+          }
 
         override def sendBinary(bytes: ByteVector): F[Unit] =
-          F.delay(ws.send(bytes.toJSArrayBuffer))
+          F.defer {
+            ws.readyState match {
+              case WebSocket.CONNECTING =>
+                F.raiseError(new WebSocketException("WebSocket is still connecting"))
+              case WebSocket.OPEN =>
+                F.delay(ws.send(bytes.toJSArrayBuffer)).handleErrorWith { e =>
+                  F.raiseError(new WebSocketException(s"Failed to send binary message: ${e.getMessage}"))
+                }
+              case WebSocket.CLOSING =>
+                F.raiseError(new WebSocketException("WebSocket is closing"))
+              case WebSocket.CLOSED =>
+                F.raiseError(new WebSocketException("WebSocket is already closed"))
+              case _ =>
+                F.raiseError(new WebSocketException("WebSocket is in an unknown state"))
+            }
+          }
 
         def send(wsf: WSDataFrame): F[Unit] = errorOr {
           wsf match {
